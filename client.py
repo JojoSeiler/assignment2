@@ -1,56 +1,49 @@
+# -*- coding: utf-8 -*-
+import subprocess
+import time
+import argparse
+import threading
 
-#!/usr/bin/env python
 
-#title           :client.py
-#description     :Todo.
-#author          :Group 8
-#date            :13.12.2017
-#version         :0.1
-#usage           :python client.py
-#notes           :
-#python_version  :2.7.12 
-#==============================================================================
 
-# Import modules
-import socket
-import sys
-import hashlib
 
-# Constants
-HOST = 'localhost'
-PORT = 5000
-ADDR = (HOST,PORT)
-BUFFER_SIZE = 4096
 
-buffer = 'Hello World\n'
 
-hasher = hashlib.sha256()
-with open('dummyfiles/512K_dummy.txt', 'rb') as afile:
-    buf = afile.read()
-    hasher.update(buf)
-print(hasher.hexdigest())
- 
-# Create TCP/IP client socket
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-print('socket created')
- 
-# Connect the socket to the port where the server is listening
-try:
-    client.connect(ADDR)
-    print('connecting to {} port {}'.format(*ADDR))
-except socket.error , msg:
-    print('Connection failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
-    sys.exit()
 
-client.sendall(buf)
 
-client.close()
+def monitorInterfacesStatus():
+	parser = argparse.ArgumentParser(description='Display WLAN signal strength.')
+	parser.add_argument(dest='interface', nargs='?', default='sta1-wlan1',
+		            help='wlan interface (default: wlan0)')
+	args = parser.parse_args()
 
-#try:
-    # Send data
-#    message = b'Hello World!'
-#    print('sending {!r}'.format(message))
-#    s.sendall(message)
-#finally:
-#    print('closing socket')
-#    s.close()
+	print '\n---Press CTRL+Z or CTRL+C to stop.---\n'
+	lastInterfaces = {'sta1-wlan0':'off/any', 'sta1-wlan1':'off/any'}	
+	interfaces = {'sta1-wlan0':'off/any', 'sta1-wlan1':'off/any'}
+	while True:
+	    cmd = subprocess.Popen('iwconfig', shell=True,
+		                   stdout=subprocess.PIPE)
+	    for line in cmd.stdout:
+		if 'ESSID' in line:
+		    interface = line.split(' ')[0]
+		    if 'off/any' in line:
+			value = 'off/any'
+		    else:
+		        value = line.split('"')[1]
+
+		    interfaces[interface] = value
+		
+		if lastInterfaces != interfaces:
+		    lastInterfaces['sta1-wlan0'] = interfaces['sta1-wlan0']
+	            lastInterfaces['sta1-wlan1'] = interfaces['sta1-wlan1']
+		    print lastInterfaces
+		
+		     
+	    time.sleep(1)
+
+
+
+
+
+threadWork = threading.Thread(target=monitorInterfacesStatus)
+threadWork.start()
