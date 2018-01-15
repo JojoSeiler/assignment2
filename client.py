@@ -22,8 +22,8 @@ from time import sleep
 # Constants
 PORT = 5000
 BUFFER_SIZE = 4096
-slowSocketExists = False;
-fastSocketExists = False;
+slowSocket = None;
+fastSocket = None;
 buffer = 'Hello World\n'
 
 def heartbeat(arg):
@@ -46,22 +46,23 @@ hbthreadfast.start();
 
 #Open TCP/IP client socket
 def openSocket(arg, slow):
+	global slowSocket
+	global fastSocket
 	#find out if socket exists already
 	if (slow):
-		if (not slowSocketExists):
-			slowSocketExists = True
+		if (slowSocket==None):
 			slowSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		# Connect the socket to the port where the server is listening
-		try:
-    			slowSocket.connect(arg, 5000)
+		try:	
+			ADDR = (arg, 5000)
+    			slowSocket.connect(ADDR)
 			print('connecting to {} port {}'.format(*(arg,5000)))
 		except socket.error , msg:
     			print('Connection failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
 		sendData(slowSocket)		
 		#TODO start sending on slow socket
 	else:
-		if (not fastSocketExists):
-			fastSocketExists = True
+		if (fastSocket==None):
 			fastSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		try:
     			fastSocket.connect(arg, 5000)
@@ -72,15 +73,17 @@ def openSocket(arg, slow):
 
 #Close TCP/IP client socket
 def closeSocket(arg, slow):
+	global slowSocket
+	global fastSocket
 	#find out if socket exists already
 	if (slow):
-		if (slowSocketExists):
+		if (not (slowSocket==None)):
 			#TODO interrupt sending on slow socket
-			slowSocketExists = False
+			slowSocket = None
 	else:
-		if (fastSocketExists):
+		if (not (fastSocket==None)):
 			#TODO interrupt sending on fast socket
-			fastSocketExists = True
+			fastSocket = None
 	
 	
 def sendData(sendsocket):
