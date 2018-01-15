@@ -4,8 +4,8 @@
 #title           :server.py
 #description     :This will create a header for a python script.
 #author          :Group 8
-#date            :13.12.2017
-#version         :0.1
+#date            :15.01.2018
+#version         :0.2
 #usage           :python server.py
 #notes           :
 #python_version  :2.7.12 
@@ -16,7 +16,7 @@ import socket
 import sys
 
 # Constants
-HOST = 'localhost'
+HOST = '10.0.0.3'
 PORT = 5000
 ADDR = (HOST,PORT)
 BUFFER_SIZE = 4096
@@ -44,7 +44,7 @@ while True:
     print('connection from', client_addr)
      
     # Receive the data
-    newfile = open('testfile.txt', 'w')
+    newfile = open('testfile.jpeg', 'w')
 
     while True:
         data = connection.recv(BUFFER_SIZE)
