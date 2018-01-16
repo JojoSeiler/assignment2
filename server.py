@@ -20,6 +20,42 @@ HOST = '10.0.0.3'
 PORT = 5000
 ADDR = (HOST,PORT)
 BUFFER_SIZE = 4096
+
+from threading import Thread
+from time import sleep
+
+CONNECTION_LIST = []	
+
+def monitor_connection_state(address, socket):
+
+	print address, " start monitoring connection state"
+
+	CONNECTION_LIST.append(socket)
+
+	hbthread = Thread(target = heartbeat, args=(address,socket, ))
+	hbthread.start();
+    
+
+def heartbeat(address, socket):
+
+	global CONNECTION_LIST
+
+	connectionValid = True
+
+	while connectionValid:
+		response = os.system("ping -c 1 " + arg)
+		
+		if response == 0:
+        		print address, " is still connected!"
+			
+		else:
+			connectionValid = False	
+			CONNECTION_LIST.remove(socket)		
+			
+			#TODO register last received packet
+			
+			print address, " is disconnected, remove connection!"
+		sleep(1)
  
 # Create TCP/IP server socket
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,6 +77,7 @@ print('Socket now listening')
 while True:
     #wait to accept a connection - blocking call
     connection, client_addr = server.accept()
+    monitor_connection_state(client_addr,server)
     print('connection from', client_addr)
      
     # Receive the data
@@ -58,6 +95,16 @@ while True:
     connection.close()
     print('client disconnected')
 
-
+def start_heartbeat(arg):
+	while True:
+		response = os.system("ping -c 1 " + arg)
+		if response == 0:
+        		print arg, " is up!"
+			openSocket(arg, arg=='10.0.0.3')
+			
+		else:
+			print arg, " is down!"
+			closeSocket(arg, arg=='10.0.0.3')
+		sleep(1)
 
 
