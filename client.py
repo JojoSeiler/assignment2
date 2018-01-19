@@ -78,10 +78,10 @@ def monitorInterfacesStatus():
 			# bind socket
 		        connect(slowSocket, addr, PORT) # TODO handle connection fail
 			if sizeOfDataSent == False:			    
-				sendSizeThread = Thread(target = send_sizeOfData, args=(slowSocket, data, ))
+				sendSizeThread = threading.Thread(target = send_sizeOfData, args=(slowSocket, data, ))
 				sendSizeThread.start()
 				sendSizeThread.join()
-			sendDataSlowSocketThread = Thread(target = send_data, args=(slowSocket, data, ))
+			sendDataSlowSocketThread = threading.Thread(target = send_data, args=(slowSocket, data, ))
 			sendDataSlowSocketThread.start()
 		    lastInterfaces['sta1-wlan0'] = interfaces['sta1-wlan0']
 
@@ -94,10 +94,10 @@ def monitorInterfacesStatus():
 			# bind socket
 			connect(fastSocket, addr, PORT) # TODO handle connection fail
 			if sizeOfDataSent == False:			    
-				sendSizeThread = Thread(target = send_sizeOfData, args=(fastSocket, data, ))
+				sendSizeThread = threading.Thread(target = send_sizeOfData, args=(fastSocket, data, ))
 				sendSizeThread.start()
 				sendSizeThread.join()
-			sendDataFastSocketThread = Thread(target = send_data, args=(fastSocket, data, ))
+			sendDataFastSocketThread = threading.Thread(target = send_data, args=(fastSocket, data, ))
 			sendDataFastSocketThread.start()
 		    lastInterfaces['sta1-wlan1'] = interfaces['sta1-wlan1']
 		
