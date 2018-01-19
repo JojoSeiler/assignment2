@@ -227,7 +227,7 @@ def send_data(sock, data):
 inputFile = sys.argv[1]
 data = get_fileData(inputFile)
 lastInterfaces = {'sta1-wlan0':'off/any', 'sta1-wlan1':'off/any'}
-interfaceToIP = {'ap1-ssid':'10.0.0.2', 'ap2-ssid':'10.1.0.3', 'ap3-ssid':'10.1.0.3', 'fast-ssid':'10.0.0.3'}
+interfaceToIP = {'ap1-ssid':'10.0.0.3', 'ap2-ssid':'10.1.0.3', 'ap3-ssid':'10.1.0.3', 'fast-ssid':'10.1.0.3'}
 
 
 
@@ -237,29 +237,5 @@ dataList = get_dataList(data, bytes)
 noOfChunks = get_noOfChunks(bytes, CHUNK_SIZE)
 threadWork = threading.Thread(target=monitorInterfacesStatus)
 threadWork.start()
-# Create TCP client socket
-#sock = initSocket()
-
-#bind(sock, temp_addr, PORT)
-#connect(sock, temp_addr, PORT)
-#send_sizeOfData(sock, data)
-#send_data(sock, data)
-
-#server_addr = 'localhost'
-#server_port = 8080
-#connect(sock, server_addr, server_port)
-#send_sizeOfData(sock, data)
-#send_data(sock, data)
-
-
-
-
-
-
-
-
-
-
-
 
 
