@@ -16,7 +16,7 @@ import sys
 import os
 import socket
 import struct
-import threading
+from threading import Thread
 import time
 
 # Constants
@@ -130,7 +130,7 @@ def listen_For_Connections(socket):
     
     while True:
         # wait to accept a connection
-        connection, client_addr = sock.accept()
+        connection, client_addr = socket.accept()
         print('Got connection from: ', client_addr)
     
         count = recv_sizeOfData(connection)
@@ -148,9 +148,9 @@ count = 0
 
 slowSock = start_server(('10.0.0.3', server_port))
 fastSock = start_server(('10.1.0.3', server_port))
-slowSockThread = Thread(target = listen_For_Connections, args=(slowSocket, ))
+slowSockThread = Thread(target = listen_For_Connections, args=(slowSock, ))
 slowSockThread.start()
-fastSockThread = Thread(target = listen_For_Connections, args=(fastSocket, ))
+fastSockThread = Thread(target = listen_For_Connections, args=(fastSock, ))
 fastSockThread.start()
 
 
