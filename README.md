@@ -17,5 +17,5 @@ Run the client-script on sta1:
 
 xterm sta1
 
-python client.py test10xt
+python client.py test10.txt
 
