@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 
 #title           :client.py
@@ -23,20 +22,13 @@ import threading
 
 
 # Constants
-#('localhost', 80)
-ADDR = ('localhost', 80)
-#WLAN0_ADDR = ('10.0.0.2', 80)
-#WLAN1_ADDR = ('10.1.0.2', 80)
-#H1_ADDR = ('10.0.0.3', 80)
 CHUNK_SIZE = 4096
 PORT = 8080
+
 sizeOfDataSent = False
 socket1 = None
 socket2 = None
 data = None
-firstPackage = True
-total_sent1 = 0
-total_sent2 = 0
 state = {'sta1-wlan0':{'socket':None, 'ap':None}, 'sta1-wlan1':{'socket':None, 'ap':None}}
 
 
@@ -53,7 +45,6 @@ def monitorInterfacesStatus():
 	global state
 	global socket1Thread
        	
-
 	parser = argparse.ArgumentParser(description='Display WLAN signal strength.')
 	parser.add_argument(dest='interface', nargs='?', default='sta1-wlan1',
 		            help='wlan interface (default: wlan0)')
@@ -76,56 +67,46 @@ def monitorInterfacesStatus():
 		    interfaces[interface] = value
 		
 
-
 		if lastInterfaces['sta1-wlan0'] != interfaces['sta1-wlan0']:
 		    if interfaces['sta1-wlan0'] == 'off/any':
 		        print 'stop socket1' #close the socket
-			socket1Thread.exit()			
+			socketThreadStatus[1] = False		
 			socket1.shutdown(0)
 			socket1.close()
 		    elif lastInterfaces['sta1-wlan0'] == 'off/any':
-		        print 'socket1 '+interfaces['sta1-wlan0'] #just open the socket with the new ap
-			socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
-			connect(socket1,interfaceToIP[lastInterfaces['sta1-wlan0']] , PORT)
-			socket1Thread.start()
+		        print 'socket1 '+ interfaces['sta1-wlan0'] #just open the socket with the new ap
+			socketThreadStatus[1] = True			
+			
+			socket1 = initSocket()
+			if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
+			    socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
+			    socket1Thread.start()			
 		    else:
-			socket1Thread.exit()			
+			print("close socket and reopen with new ap")
+			print("Socket1 connected with " + interfaces['sta1-wlan0'])
+			socketThreadStatus[1] = False		
 			socket1.shutdown(0)
 			socket1.close()
-			connect(socket1,interfaceToIP[lastInterfaces['sta1-wlan0']] , PORT)
-			socket1Thread.start()
+			
+			socket1 = initSocket()
+			socketThreadStatus[1] = True
+			if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
+			    socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
+			    socket1Thread.start()
 		        print 'socket1 '+interfaces['sta1-wlan0'] #close and open the socket with the new ap
 
 		    lastInterfaces['sta1-wlan0'] = interfaces['sta1-wlan0']
 			
-		   
-		if lastInterfaces['sta1-wlan1'] != interfaces['sta1-wlan1']:
-		    if interfaces['sta1-wlan1'] == 'off/any':
-		        print 'stop socket2' #close the socket
-		    
-                    elif lastInterfaces['sta1-wlan1'] == 'off/any':
-		        print 'socket2 '+interfaces['sta1-wlan1'] #just open the socket with the new ap
-
-		    else:
-		        print 'socket 2'+interfaces['sta1-wlan1'] #close and open the socket with the new ap
-		    
-	
-
 		
-		    lastInterfaces['sta1-wlan1'] = interfaces['sta1-wlan1']
-			
-		        
-		    
-		    
-		
-
 		    
 	    time.sleep(1)
 
    
 
     
-		
+###		
+# Helper functions
+###
 
 # read the contents of a file
 def get_fileData(inputFile):
@@ -137,7 +118,7 @@ def get_fileData(inputFile):
 # get the length of data, ie size of the input file in bytes
 def get_sizeInBytes(data):
     bytes = len(data)
-    #print("Length of data in bytes: " + str(bytes))
+    print("Length of data in bytes: " + str(bytes))
     return bytes
 
 # calculate the number of chunks to be created
@@ -146,18 +127,24 @@ def get_noOfChunks(bytes, chunkSize):
     if (bytes%chunkSize):
     	noOfChunks += 1
     print("Number of chunks: " + str(noOfChunks))
-    return noOfChunks
+    return noOfChunks   
 
-# store chunks in array
 def get_dataList(data, bytes):
     dataList = []
-    for i in range(0, bytes+1, CHUNK_SIZE):
+    dataList.append(bytes) # add the size of the data as firste element
+    for i in range(0, bytes+1, CHUNK_SIZE): # add the chunks to the list
     	dataList.append(data[i: i+CHUNK_SIZE])
+    print("Elements in dataList: " + str(len(dataList)))
     return dataList
+
+###
+# Socket functions
+###
 
 # Initialize socket      	 
 def initSocket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     print("TCP client socket created.")
     return sock
 
@@ -168,84 +155,92 @@ def bind(sock, host, port):
     	print('Binding to ' + host + ' on port ' + str(port))
     except socket.error , msg:
         print('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
-    	sys.exit()
+    	#sys.exit()
 
 # Connect socket to the port where H1 is listening
 def connect(sock, host, port):
+    connectionSuccessful = False
     try:
     	sock.connect((host, port))
     	print('Connecting to ' + host + ' on port ' + str(port))
     except socket.error , msg:
         print('Connection failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
-    	sys.exit()
+    	return connectionSuccessful 
+    connectionSuccessful = True
+    return connectionSuccessful
 
-
-     
-
-def get_dataList(data):
-    bytes = len(data)
-    print("Length of data in bytes: " + str(bytes))
-    dataList = []
-    dataList.append(bytes)
-     for i in range(0, bytes+1, CHUNK_SIZE):
-    	dataList.append(data[i: i+CHUNK_SIZE])
-    return dataList
-
-# Send data
+# Send data from socket1 or socket2
 def send_data(sock, socketNr):
     global dataList
+    global noOfChunks
+    global sizeInBytes
+
+    global socketThreadStatus
+    global sendData
+
+    global chunks_sent
+    global bytes_sent
     global total_sent1
     global total_sent2
+    
     global sizeOfDataSent
 
-    while len(dataList) > 0:
-	#check if first chunk with data length has already been sent
+    #while len(dataList) > 0:
+    while chunks_sent < noOfChunks and socketThreadStatus[socketNr]: # and send data
+	#check if first chunk with sizeOfData has already been sent
 	if sizeOfDataSent == False:
-	    sizeOfData = dataList.pop[0]
-	    pack = struct.pack('!I', len(str(bytes)))+str(bytes)
+	    sizeOfData = dataList.pop(0) # remove sizeOfData from list so that chunks start at dataList[0]
+	    print("sizeOfData: " + str(sizeOfData))
+	    pack = struct.pack('!I', len(str(sizeOfData)))+str(sizeOfData)
 	
 	    while True:
 	    	try:
 	     	    sock.sendall(pack)
 	    	except socket.error, e:
-	      	if errorcode == errno.ECONNRESET:
-		    print("Couldn' sent size of data. Error Code: " + str(errorcode) + ', Message: ' + e[1])
+	   	    errorcode = e[0]
+	      	    if errorcode == errno.ECONNRESET:
+		        print("Couldn' sent size of data. Error Code: " + str(errorcode) + ', Message: ' + e[1])
 		    continue
 	        break
-		sizeOfDataSent = True
-		print("Sent data size: " + str(bytes))
-	else: # data size has already been sent -> sent chunks
+	    sizeOfDataSent = True
+	    print("Sent data size: " + str(sizeOfData))
+
+	else: # sizeOfData has already been sent -> sent chunks
  	    #if total_sent1 <= total_sent2:
 	    if True:
-		if socketNr ==1:
-		    noOfChunk = dataList.index(total_sent1)
+		if socketNr == 1:
+		    noOfChunk = total_sent1
 		    noOfChunk_fmt = struct.pack('!I', noOfChunk)
 	    	    chunk = dataList[total_sent1]
 	    	    lenChunk_fmt = struct.pack('!I', len(chunk))
 		    pkt = noOfChunk_fmt + lenChunk_fmt + chunk
 		else:
-		    noOfChunk = dataList.index(total_sent2)
+		    noOfChunk = total_sent2
 		    noOfChunk_fmt = struct.pack('!I', noOfChunk)
 	    	    chunk = dataList[total_sent2]
 	    	    lenChunk_fmt = struct.pack('!I', len(chunk))
 		    pkt = noOfChunk_fmt + lenChunk_fmt + chunk
-		
-	    	
-
-	 	while True:
-		    try:
-			sock.sendall(pkt) # send no of chunk + length of chunk + actual data
-		    except socket.error, e:
-		   	if e.errno == errno.ECONNRESET:
+	    print("length of pkt: " + str(len(pkt)))
+	    # Send chunk	
+	    while True:
+		try:
+		    sock.sendall(pkt) # send no of chunk + length of chunk + actual data
+		except socket.error, e:
+		   if e.errno == errno.ECONNRESET:
 			print("Couln't sent chunk")
-			continue
+		   continue
 		break
+
             if socketNr ==1:
 		total_sent1 += 1
+	  	print("Socket1 sent chunk number " + str(total_sent1) + ", size in bytes: " + str(len(chunk)))
             else:
 		total_sent2 -=1 
-	    print("Sent chunk number " + str(noOfChunks) + ", size in bytes: " + str(len(chunk)))
-
+	        print("Socket2 sent chunk number " + str(total_sent2) + ", size in bytes: " + str(len(chunk)))
+	    
+	    bytes_sent += len(chunk)
+	    chunks_sent += 1
+	    print("Chunks sent: " + str(chunks_sent) + "/" + str(noOfChunks) + ", bytes sent: " + str(bytes_sent) + "/" + str(sizeInBytes))
 
 ###
 # Main
@@ -257,27 +252,27 @@ data = get_fileData(inputFile)
 lastInterfaces = {'sta1-wlan0':'off/any', 'sta1-wlan1':'off/any'}
 interfaceToIP = {'ap1-ssid':'10.0.0.3', 'ap2-ssid':'10.1.0.3', 'ap3-ssid':'10.1.0.3', 'fast-ssid':'10.1.0.3'}
 
-
-dataList = get_dataList(data)
 # Split chunks
-bytes = get_sizeInBytes(data)
-dataList = get_dataList(data, bytes)
+sizeInBytes = get_sizeInBytes(data)
+dataList = get_dataList(data, sizeInBytes)
+noOfChunks = get_noOfChunks(sizeInBytes, CHUNK_SIZE)
 
-noOfChunks = get_noOfChunks(bytes, CHUNK_SIZE)
-total_sent2 = len(noOfChunks-1)
-threadWork = threading.Thread(target=monitorInterfacesStatus)
-threadWork.start()
+chunks_sent = 0 # total number of chunks sent
+bytes_sent = 0 # total number of bytes sent
+total_sent1 = 0 # number of chunks sent from socket1
+total_sent2 = noOfChunks-1 # number of chunks sent from socket2
+
+socketThreadStatus = {1 : False, 2 : False}
+sendData = False
 
 # Initialize the sockets
 socket1 = initSocket()
 socket2 = initSocket()
 
 
+threadWork = threading.Thread(target=monitorInterfacesStatus)
+threadWork.start()
+
 socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
-
-
-
-
-
 
 

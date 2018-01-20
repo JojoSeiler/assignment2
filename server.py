@@ -14,26 +14,32 @@
 # Import modules
 import sys
 import os
+import errno
+
 import socket
 import struct
-from threading import Thread
-import time
+import threading
+import time 
+from time import sleep
 
 # Constants
-
-#('localhost', 80)
-ADDR = ('localhost', 80)
 CHUNK_SIZE = 4096
 FILE_NAME = 'received_file'
- 
+ADDR_1 = '10.0.0.3'
+ADDR_2 = '10.1.0.3'
+PORT = 8080 
+
+CONNECTION_LIST = [] 
+
 ###
 # Functions
 ###
 
-# Start server      	 
-def start_server((host, port)):
+# Create server socket and start listening    	 
+def start_server((host, port), socketNr):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print("TCP server socket created.")
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    print("Created TCP server socket " + str(socketNr) + ".")
     try:
     	sock.bind((host, port))
     	print('Binding to ' + host + ' on port ' + str(port))
@@ -41,18 +47,58 @@ def start_server((host, port)):
         print('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
     	sys.exit()
     sock.listen(1)
-    print('Server socket now listening.')
+    print("Server socket " + str(socketNr) + " now listening.")
     return sock
 
-# calculate the number of chunks to be created
+# calculate the number of chunks to be received
 def get_noOfChunks(bytes, chunkSize):
     noOfChunks = bytes/chunkSize
     if (bytes%chunkSize):
     	noOfChunks += 1
-    print("Number of chunks: " + str(noOfChunks))
+    print("Number of chunks to be received: " + str(noOfChunks))
     return noOfChunks
 
-# helper funciton to recv n bytes or return None if EOF is hit
+def monitor_connection_state(address, socket):
+
+    print address, " start monitoring connection state"
+    CONNECTION_LIST.append(socket)
+    hbthread = threading.Thread(target = heartbeat, args=(address,socket, ))
+    hbthread.start();
+
+def heartbeat(address, socket):
+
+    global CONNECTION_LIST
+
+    connectionValid = True
+
+    while connectionValid:
+	response = os.system("ping -c 1 " + arg)
+		
+	if response == 0:
+             print address, " is still connected!"
+			
+	else:
+	    connectionValid = False	
+	    CONNECTION_LIST.remove(socket)		
+			
+	    #TODO register last received packet
+			
+	    print address, " is disconnected, remove connection!"
+      	sleep(1)
+
+def start_heartbeat(arg):
+    while True:
+	response = os.system("ping -c 1 " + arg)
+	if response == 0:
+            print arg, " is up!"
+	    openSocket(arg, arg=='10.0.0.3')
+			
+	else:
+	    print arg, " is down!"
+	    closeSocket(arg, arg=='10.0.0.3')
+	sleep(1)
+
+# Helper funciton to recv n bytes or return None if EOF is hit
 def recvall(sock, count):
     buf = b''
     while count:
@@ -62,57 +108,109 @@ def recvall(sock, count):
 	count -= len(newbuf)
     return buf
 
-# Receive the size of the data to be received
-def recv_sizeOfData(connection):
-    while True:
-    	try:
-	    # length of data size is packed into 4 bytes
-	    bytesBuf = recvall(connection, 4)
+
+# Receive data 	
+def recv_data(sock):
+    global dataList
+    global noOfChunks
+    global sizeOfDataRecv
+    global fileTransferComplete
+    
+    global total_recv
+    global bytes_recv
+    global sizeInBytes
+
+    global start
+    global end
+	
+    # Start timer
+    start = time.time()
+
+    # Check if first chunk with data length has already been received
+    if sizeOfDataRecv == False:
+	try:		
+	    bytesBuf = recvall(sock, 4)
 	    size_bytes, = struct.unpack('!I', bytesBuf)
-	    bytes = recvall(connection, size_bytes)	# TODO handle return value None?
-    	except socket.error, e:
+ 	    bytes = recvall(sock, size_bytes)
+	except socket.error, e:
 	    errorcode = e[0]
 	    if errorcode == errno.ECONNRESET:
-	    	# TODO handle disconnection: e.g. accept new socket
-		# TODO handle other errors/exceptions, socket.timeout
-		print("Couln't receive size of data. Error Code : " + str(errorcode) + ' Message ' + e[1])
-		continue
-	break
-    print("Length of incoming file in bytes: " + bytes)
-    return bytes
-		
-# Receive data
-def recv_Data(connection, bytes):
-    total_recv = 0
-    noOfChunk = 0
-    total_data = []
-    noOfChunks = get_noOfChunks(int(bytes), CHUNK_SIZE)
-    
-    # Receive chunks
-    while total_recv < noOfChunks: 
-	# noOfChunk is packed into 4 bytes	
-	noOfChunkBuf = recvall(connection, 4)
-	noOfChunk, = struct.unpack('!I', noOfChunkBuf)
-	# data length is packed into 4 bytes
-	sizeBuf = recvall(connection, 4)
-	size, = struct.unpack('!I', sizeBuf)
-	# Recv actual data
-	data = recvall(connection, size)
-	if data == 0:
-	    raise RuntimeError("socket connection broken") # TODO
-	total_data.append(data)
-	total_recv += 1
-        print("chunk nr: " + str(noOfChunk))
-	print("Received chunk nr " + str(total_recv) + "/" + str(noOfChunks) + ", size in bytes: " + str(len(data)))
+	        print("Couln't receive size of data. Error Code : " + str(errorcode) + ' Message ' + e[1])
+	    return False
+  	sizeOfDataRecv = True
+        sizeInBytes = bytes
+	print("Received size of data in bytes: " + bytes)
+  	noOfChunks = get_noOfChunks(int(bytes), CHUNK_SIZE) 
 	
-    total_len=sum([len(i) for i in total_data ])
-    connection.shutdown(0) # done receiving
-    connection.close()
-    print("Data transfer complete! Received " + str(total_len) + "/" + bytes + " bytes.")
-    return total_data
+    else: # sizeOfData has already been received -> receive chunks
+	while total_recv < noOfChunks:
+	    # Receive number of Chunk
+	    try:
+		# noOfChunk is packed into 4 bytes
+	    	noOfChunkBuf = recvall(sock, 4)
+	    	noOfChunk, = struct.unpack('!I', noOfChunkBuf)
+	    except socket.error, e:
+		errorcode = e[0]
+		#if errorcode == errno.ECONNRESET:
+		print("Couln't receive number of chunk. Closing connection. Error Code : " + str(errorcode) + ' Message ' + e[1])
+		sock.shutdown(0)
+		sock.close()
+		#return False
+		
+		    
+	      	
+	    # Receive size of chunk
+	    try:
+		# sizeBuf is packed into 4 bytes
+	    	sizeBuf = recvall(sock, 4)
+	    	size, = struct.unpack('!I', sizeBuf)
+	    except socket.error, e:
+		errorcode = e[0]
+		#if errorcode == errno.ECONNRESET:
+		print("Couln't receive length of data. Closing connection. Error Code : " + str(errorcode) + ' Message ' + e[1])
+		sock.shutdown(0)
+		sock.close()
+		#return False
+
+	    # Receive actual data
+	    try:
+	    	chunk = recvall(sock, size) 
+	    except socket.error, e:
+		errorcode = e[0]
+		#if errorcode == errno.ECONNRESET:
+		print("Couln't receive chunk data. Closing connection. Error Code : " + str(errorcode) + ' Message ' + e[1])
+		sock.shutdown(0)
+		sock.close()
+		#return False
+	
+
+	    # noOfChunk is packed into 4 bytes
+	    #noOfChunkBuf = recvall(sock, 4)
+	    #noOfChunk, = struct.unpack('!I', noOfChunkBuf)
+	    # data length is packed into 4 bytes
+	    #sizeBuf = recvall(sock, 4)
+	    #size, = struct.unpack('!I', sizeBuf)
+	    # Recv actual data
+	    #chunk = recvall(sock, size) 
+	    dataList.insert(noOfChunk, chunk)
+    	    total_recv += 1
+   	    bytes_recv += len(chunk)
+	    print("Received chunk nr " + str(noOfChunk) + ", size in bytes: " + str(len(chunk)))
+	    print("Chunks received: " + str(total_recv) + "/" + str(noOfChunks) + ", bytes received: " + str(bytes_recv) + "/" + str(sizeInBytes))
+	
+	fileTransferComplete = True
+	end = time.time()
+	transfer_time = end - start
+	print("time: " + str(transfer_time))
+	
 
 # Store data in file
-def store_Data(fileName, dataList):
+def store_data(fileName):
+    global dataList
+	
+    total_len=sum([len(i) for i in dataList])
+    print("Data transfer complete! Received " + str(total_len) + " bytes.")
+
     # Deletes file so that we don't append to existing files
     if os.path.isfile(fileName):
 	#fileName += '_new'
@@ -125,32 +223,66 @@ def store_Data(fileName, dataList):
     print("Wrote data to file '" + fileName + "', length of file: " + str(size))
 
 def listen_For_Connections(socket):
-    global dataList
-    global count
+    global fileTransferComplete
     
-    while True:
-        # wait to accept a connection
-        connection, client_addr = socket.accept()
-        print('Got connection from: ', client_addr)
-    
-        count = recv_sizeOfData(connection)
-        dataList = recv_Data(connection, count)
-        #store_Data(FILE_NAME, dataList)	
+    #connection, client_addr = socket.accept()
+    #print("Got first connection from: " + str(client_addr))
 
+    connection = 0
+    while fileTransferComplete == False:
+	if connection == None:
+	    connection, client_addr = socket.accept()
+    	    print("Got first connection from: " + str(client_addr))
+	    recv_data(conneciton)
+	else:
+	    recv_data(connection)
+    	
+   
+    store_data(FILE_NAME) 
+    connection.shutdown(0)
+    connection.close()
+    socket.shutdown(0)
+    socket.close()
+           
+	
 ###
 # Main
 ###
 
-server_addr = 'localhost'
-server_port = 8080
-dataList = None
-count = 0
+dataList = []
+noOfChunks = None
+total_recv = 0
+bytes_recv = 0
+sizeInBytes = 0
 
-slowSock = start_server(('10.0.0.3', server_port))
-fastSock = start_server(('10.1.0.3', server_port))
-slowSockThread = Thread(target = listen_For_Connections, args=(slowSock, ))
-slowSockThread.start()
-fastSockThread = Thread(target = listen_For_Connections, args=(fastSock, ))
-fastSockThread.start()
+sizeOfDataRecv = False
+fileTransferComplete = False
+socket1 = None
+socket2 = None
+
+start = 0
+end = 0
+
+# Start server sockets
+socket1 = start_server(('10.0.0.3', PORT), 1)
+socket2 = start_server(('10.1.0.3', PORT), 2)
+
+socket1Thread = threading.Thread(target = listen_For_Connections, args=(socket1, ))
+socket1Thread.start()
+
+#socket2Thread = threading.Thread(target = listen_For_Connections, args=(socket2, ))
+#socket2Thread.start()
+
+
+
+
+# TODO add second socket
+
+
+
+
+
+
+
 
 
