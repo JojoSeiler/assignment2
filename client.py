@@ -19,6 +19,7 @@ import subprocess
 import time
 import argparse
 import threading
+import os
 
 
 # Constants
@@ -78,12 +79,13 @@ def monitorInterfacesStatus():
 
 		    elif lastInterfaces['sta1-wlan0'] == 'off/any':
 		        print 'socket1 '+ interfaces['sta1-wlan0'] #just open the socket with the new ap
-			socketThreadStatus[1] = True			
-			
-			socket1 = initSocket()
-			if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
-			    socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
-			    socket1Thread.start()			
+			response = os.system("ping -c 1 " + interfaceToIP[interfaces['sta1-wlan0']])
+			if response == 0:
+				socketThreadStatus[1] = True					
+				socket1 = initSocket()
+				if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
+			    		socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
+			    		socket1Thread.start()			
 		    else:
 			print("close socket and reopen with new ap")
 			print("Socket1 connected with " + interfaces['sta1-wlan0'])
@@ -91,13 +93,14 @@ def monitorInterfacesStatus():
 			if socket1 != None:
 			    socket1.shutdown(0)
 			    socket1.close()	
-			
-			socket1 = initSocket()
-			socketThreadStatus[1] = True
-			if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
-			    socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
-			    socket1Thread.start()
-		        print 'socket1 '+interfaces['sta1-wlan0'] #close and open the socket with the new ap
+			response = os.system("ping -c 1 " + interfaceToIP[interfaces['sta1-wlan0']])
+			if response == 0:
+				socket1 = initSocket()
+				socketThreadStatus[1] = True
+				if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
+				    socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
+				    socket1Thread.start()
+		        	print 'socket1 '+interfaces['sta1-wlan0'] #close and open the socket with the new ap
 
 		    lastInterfaces['sta1-wlan0'] = interfaces['sta1-wlan0']
 		
@@ -111,12 +114,13 @@ def monitorInterfacesStatus():
 
 		    elif lastInterfaces['sta1-wlan1'] == 'off/any':
 		        print 'socket2 '+ interfaces['sta1-wlan1'] #just open the socket with the new ap
-			socketThreadStatus[2] = True			
-			
-			socket2 = initSocket()
-			if connect(socket2,interfaceToIP[interfaces['sta1-wlan1']] , PORT) == True:
-			    socket2Thread = threading.Thread(target=send_data, args=(socket2,2, ))
-			    socket2Thread.start()			
+			response = os.system("ping -c 1 " + interfaceToIP[interfaces['sta1-wlan1']])
+			if response == 0:			
+				socketThreadStatus[2] = True			
+				socket2 = initSocket()
+				if connect(socket2,interfaceToIP[interfaces['sta1-wlan1']] , PORT) == True:
+				    socket2Thread = threading.Thread(target=send_data, args=(socket2,2, ))
+				    socket2Thread.start()			
 		    else:
 			print("close socket and reopen with new ap")
 			print("Socket2 connected with " + interfaces['sta1-wlan1'])
@@ -124,13 +128,14 @@ def monitorInterfacesStatus():
 			if socket2 != None:
 			    socket2.shutdown(0)
 			    socket2.close()
-			
-			socket2 = initSocket()
-			socketThreadStatus[2] = True
-			if connect(socket2,interfaceToIP[interfaces['sta1-wlan1']] , PORT) == True:
-			    socket2Thread = threading.Thread(target=send_data, args=(socket2,2, ))
-			    socket2Thread.start()
-		        print 'socket2 '+interfaces['sta1-wlan1'] #close and open the socket with the new ap
+			response = os.system("ping -c 1 " + interfaceToIP[interfaces['sta1-wlan0']])
+			if response == 0:
+				socket2 = initSocket()
+				socketThreadStatus[2] = True
+				if connect(socket2,interfaceToIP[interfaces['sta1-wlan1']] , PORT) == True:
+			    		socket2Thread = threading.Thread(target=send_data, args=(socket2,2, ))
+			    		socket2Thread.start()
+		        	print 'socket2 '+interfaces['sta1-wlan1'] #close and open the socket with the new ap
 
 		    lastInterfaces['sta1-wlan1'] = interfaces['sta1-wlan1']
 			
