@@ -1,132 +1,316 @@
-
 #!/usr/bin/env python
 
 #title           :client.py
 #description     :Todo.
 #author          :Group 8
-#date            :15.01.2018
-#version         :0.2
+#date            :13.12.2017
+#version         :0.1
 #usage           :python client.py
 #notes           :
 #python_version  :2.7.12 
 #==============================================================================
 
 # Import modules
-import socket
 import sys
-import hashlib
-import os
-from threading import Thread
-from time import sleep
+import errno
+import socket
+import struct
+import subprocess
+import time
+import argparse
+import threading
+
 
 # Constants
-PORT = 5000
-BUFFER_SIZE = 4096
-slowSocket = None;
-fastSocket = None;
-buffer = 'Hello World\n'
+CHUNK_SIZE = 4096
+PORT = 8080
 
-def heartbeat(arg):
+sizeOfDataSent = False
+socket1 = None
+socket2 = None
+data = None
+state = {'sta1-wlan0':{'socket':None, 'ap':None}, 'sta1-wlan1':{'socket':None, 'ap':None}}
+
+
+###
+# Functions
+###
+
+# Keep monitoring the wlan-interfaces
+def monitorInterfacesStatus():
+	global lastInterfaces
+	global socket1
+	global socket2
+       	global data
+	global state
+	global socket1Thread
+	global socket2Thread
+       	
+	parser = argparse.ArgumentParser(description='Display WLAN signal strength.')
+	parser.add_argument(dest='interface', nargs='?', default='sta1-wlan1',
+		            help='wlan interface (default: wlan0)')
+	args = parser.parse_args()
+
+	print '\n---Press CTRL+Z or CTRL+C to stop.---\n'
+		
+	interfaces = {'sta1-wlan0':'off/any', 'sta1-wlan1':'off/any'}
 	while True:
-		response = os.system("ping -c 1 " + arg)
-		if response == 0:
-        		print arg, " is up!"
-			openSocket(arg, arg=='10.0.0.3')
+	    cmd = subprocess.Popen('iwconfig', shell=True,
+		                   stdout=subprocess.PIPE)
+	    for line in cmd.stdout:
+		if 'ESSID' in line:
+		    interface = line.split(' ')[0]
+		    if 'off/any' in line:
+			value = 'off/any'
+		    else:
+		        value = line.split('"')[1]
+
+		    interfaces[interface] = value
+		
+
+		if lastInterfaces['sta1-wlan0'] != interfaces['sta1-wlan0']:
+		    if interfaces['sta1-wlan0'] == 'off/any':
+		        print 'stop socket1' #close the socket
+			socketThreadStatus[1] = False		
+			if (socket1 != None):			
+			    socket1.shutdown(0)
+			    socket1.close()
+
+		    elif lastInterfaces['sta1-wlan0'] == 'off/any':
+		        print 'socket1 '+ interfaces['sta1-wlan0'] #just open the socket with the new ap
+			socketThreadStatus[1] = True			
 			
+			socket1 = initSocket()
+			if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
+			    socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
+			    socket1Thread.start()			
+		    else:
+			print("close socket and reopen with new ap")
+			print("Socket1 connected with " + interfaces['sta1-wlan0'])
+			socketThreadStatus[1] = False	
+			if socket1 != None:
+			    socket1.shutdown(0)
+			    socket1.close()	
+			
+			socket1 = initSocket()
+			socketThreadStatus[1] = True
+			if connect(socket1,interfaceToIP[interfaces['sta1-wlan0']] , PORT) == True:
+			    socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
+			    socket1Thread.start()
+		        print 'socket1 '+interfaces['sta1-wlan0'] #close and open the socket with the new ap
+
+		    lastInterfaces['sta1-wlan0'] = interfaces['sta1-wlan0']
+		
+		if lastInterfaces['sta1-wlan1'] != interfaces['sta1-wlan1']:
+		    if interfaces['sta1-wlan1'] == 'off/any':
+		        print 'stop socket2' #close the socket
+			socketThreadStatus[2] = False		
+			if socket2 != None:
+			    socket2.shutdown(0)
+			    socket2.close()
+
+		    elif lastInterfaces['sta1-wlan1'] == 'off/any':
+		        print 'socket2 '+ interfaces['sta1-wlan1'] #just open the socket with the new ap
+			socketThreadStatus[2] = True			
+			
+			socket2 = initSocket()
+			if connect(socket2,interfaceToIP[interfaces['sta1-wlan1']] , PORT) == True:
+			    socket2Thread = threading.Thread(target=send_data, args=(socket2,2, ))
+			    socket2Thread.start()			
+		    else:
+			print("close socket and reopen with new ap")
+			print("Socket2 connected with " + interfaces['sta1-wlan1'])
+			socketThreadStatus[2] = False		
+			if socket2 != None:
+			    socket2.shutdown(0)
+			    socket2.close()
+			
+			socket2 = initSocket()
+			socketThreadStatus[2] = True
+			if connect(socket2,interfaceToIP[interfaces['sta1-wlan1']] , PORT) == True:
+			    socket2Thread = threading.Thread(target=send_data, args=(socket2,2, ))
+			    socket2Thread.start()
+		        print 'socket2 '+interfaces['sta1-wlan1'] #close and open the socket with the new ap
+
+		    lastInterfaces['sta1-wlan1'] = interfaces['sta1-wlan1']
+			
+		
+		    
+	    time.sleep(1)
+
+   
+
+    
+###		
+# Helper functions
+###
+
+# read the contents of a file
+def get_fileData(inputFile):
+    f = open(inputFile, 'rb')
+    data = f.read() # read the entire content of the file
+    f.close()
+    return data
+
+# get the length of data, ie size of the input file in bytes
+def get_sizeInBytes(data):
+    bytes = len(data)
+    print("Length of data in bytes: " + str(bytes))
+    return bytes
+
+# calculate the number of chunks to be created
+def get_noOfChunks(bytes, chunkSize):
+    noOfChunks = bytes/chunkSize
+    if (bytes%chunkSize):
+    	noOfChunks += 1
+    print("Number of chunks: " + str(noOfChunks))
+    return noOfChunks   
+
+def get_dataList(data, bytes):
+    dataList = []
+    dataList.append(bytes) # add the size of the data as firste element
+    for i in range(0, bytes+1, CHUNK_SIZE): # add the chunks to the list
+    	dataList.append(data[i: i+CHUNK_SIZE])
+    print("Elements in dataList: " + str(len(dataList)))
+    return dataList
+
+###
+# Socket functions
+###
+
+# Initialize socket      	 
+def initSocket():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    print("TCP client socket created.")
+    return sock
+
+# Bind socket to interface / IP address
+def bind(sock, host, port):
+    try:
+    	sock.bind((host, port))
+    	print('Binding to ' + host + ' on port ' + str(port))
+    except socket.error , msg:
+        print('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+    	#sys.exit()
+
+# Connect socket to the port where H1 is listening
+def connect(sock, host, port):
+    connectionSuccessful = False
+    try:
+    	sock.connect((host, port))
+    	print('Connecting to ' + host + ' on port ' + str(port))
+    except socket.error , msg:
+        print('Connection failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+    	return connectionSuccessful 
+    connectionSuccessful = True
+    return connectionSuccessful
+
+# Send data from socket1 or socket2
+def send_data(sock, socketNr):
+    global dataList
+    global noOfChunks
+    global sizeInBytes
+
+    global socketThreadStatus
+    global sendData
+
+    global chunks_sent
+    global bytes_sent
+    global total_sent1
+    global total_sent2
+    
+    global sizeOfDataSent
+
+    #while len(dataList) > 0:
+    while chunks_sent < noOfChunks and socketThreadStatus[socketNr]: # and send data
+	#check if first chunk with sizeOfData has already been sent
+	if sizeOfDataSent == False:
+	    sizeOfData = dataList.pop(0) # remove sizeOfData from list so that chunks start at dataList[0]
+	    print("sizeOfData: " + str(sizeOfData))
+	    pack = struct.pack('!I', len(str(sizeOfData)))+str(sizeOfData)
+	
+	    while True:
+	    	try:
+	     	    sock.sendall(pack)
+	    	except socket.error, e:
+	   	    errorcode = e[0]
+	      	    if errorcode == errno.ECONNRESET:
+		        print("Couldn' sent size of data. Error Code: " + str(errorcode) + ', Message: ' + e[1])
+		    continue
+	        break
+	    sizeOfDataSent = True
+	    print("Sent data size: " + str(sizeOfData))
+
+	else: # sizeOfData has already been sent -> sent chunks
+ 	    #if total_sent1 <= total_sent2:
+	    if True:
+		if socketNr == 1:
+		    noOfChunk = total_sent1
+		    noOfChunk_fmt = struct.pack('!I', noOfChunk)
+	    	    chunk = dataList[total_sent1]
+	    	    lenChunk_fmt = struct.pack('!I', len(chunk))
+		    pkt = noOfChunk_fmt + lenChunk_fmt + chunk
 		else:
-			print arg, " is down!"
-			closeSocket(arg, arg=='10.0.0.3')
-		sleep(1)
-
-
-hbthreadslow = Thread(target = heartbeat, args=('10.0.0.3', ))
-hbthreadslow.start();
-hbthreadfast = Thread(target = heartbeat, args=('10.1.0.3', ))
-hbthreadfast.start();
-
-#Open TCP/IP client socket
-def openSocket(arg, slow):
-	global slowSocket
-	global fastSocket
-	#find out if socket exists already
-	if (slow):
-		if (slowSocket==None):
-			slowSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		# Connect the socket to the port where the server is listening
-		try:	
-			ADDR = (arg, 5000)
-    			slowSocket.connect(ADDR)
-			print('connecting to {} port {}'.format(*(arg,5000)))
-		except socket.error , msg:
-    			print('Connection failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
-		sendData(slowSocket)		
-		#TODO start sending on slow socket
-	else:
-		if (fastSocket==None):
-			fastSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		    noOfChunk = total_sent2
+		    noOfChunk_fmt = struct.pack('!I', noOfChunk)
+	    	    chunk = dataList[total_sent2]
+	    	    lenChunk_fmt = struct.pack('!I', len(chunk))
+		    pkt = noOfChunk_fmt + lenChunk_fmt + chunk
+	    print("length of pkt: " + str(len(pkt)))
+	    # Send chunk	
+	    while True:
 		try:
-    			fastSocket.connect(arg, 5000)
-			print('connecting to {} port {}'.format(*(arg,5000)))
-		except socket.error , msg:
-    			print('Connection failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
-		#TODO start sending on fast socket
+		    sock.sendall(pkt) # send no of chunk + length of chunk + actual data
+		except socket.error, e:
+		   if e.errno == errno.ECONNRESET:
+			print("Couln't sent chunk")
+		   continue
+		break
 
-#Close TCP/IP client socket
-def closeSocket(arg, slow):
-	global slowSocket
-	global fastSocket
-	#find out if socket exists already
-	if (slow):
-		if (not (slowSocket==None)):
-			#TODO interrupt sending on slow socket
-			slowSocket = None
-	else:
-		if (not (fastSocket==None)):
-			#TODO interrupt sending on fast socket
-			fastSocket = None
-	
-	
-def sendData(sendsocket):
-	hasher = hashlib.sha256()
-	with open('dummyfiles/dummy_large.jpeg', 'rb') as afile:
-    		buf = afile.read()
-    		hasher.update(buf)
-		print(hasher.hexdigest())
- 
-	try:
-   		sendsocket.sendall(buf)
-	except socket.timeout:
-   		print('Error socket timedout')
+            if socketNr ==1:
+		total_sent1 += 1
+	  	print("Socket1 sent chunk number " + str(total_sent1) + ", size in bytes: " + str(len(chunk)))
+            else:
+		total_sent2 -=1 
+	        print("Socket2 sent chunk number " + str(total_sent2) + ", size in bytes: " + str(len(chunk)))
+	    
+	    bytes_sent += len(chunk)
+	    chunks_sent += 1
+	    print("Chunks sent: " + str(chunks_sent) + "/" + str(noOfChunks) + ", bytes sent: " + str(bytes_sent) + "/" + str(sizeInBytes))
 
-	client.close()
+###
+# Main
+###
 
-def set_keepalive(sock, after_idle_sec=1, interval_sec=3, max_fails=5):
-    """Set TCP keepalive on an open socket.
+# Allocate file variables
+inputFile = sys.argv[1]
+data = get_fileData(inputFile)
+lastInterfaces = {'sta1-wlan0':'off/any', 'sta1-wlan1':'off/any'}
+interfaceToIP = {'ap1-ssid':'10.0.0.3', 'ap2-ssid':'10.1.0.3', 'ap3-ssid':'10.1.0.3', 'fast-ssid':'10.1.0.3'}
 
-    It activates after 1 second (after_idle_sec) of idleness,
-    then sends a keepalive ping once every 3 seconds (interval_sec),
-    and closes the connection after 5 failed ping (max_fails), or 15 seconds
-    """
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after_idle_sec)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval_sec)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, max_fails)
+# Split chunks
+sizeInBytes = get_sizeInBytes(data)
+dataList = get_dataList(data, sizeInBytes)
+noOfChunks = get_noOfChunks(sizeInBytes, CHUNK_SIZE)
 
-def set_keepalive_osx(sock, after_idle_sec=1, interval_sec=3, max_fails=5):
-    """Set TCP keepalive on an open socket.
+chunks_sent = 0 # total number of chunks sent
+bytes_sent = 0 # total number of bytes sent
+total_sent1 = 0 # number of chunks sent from socket1
+total_sent2 = noOfChunks-1 # number of chunks sent from socket2
 
-    sends a keepalive ping once every 3 seconds (interval_sec)
-    """
-    # scraped from /usr/include, not exported by python's socket module
-    TCP_KEEPALIVE = 0x10
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, interval_sec)
+socketThreadStatus = {1 : False, 2 : False}
+sendData = False
 
-#try:
-    # Send data
-#    message = b'Hello World!'
-#    print('sending {!r}'.format(message))
-#    s.sendall(message)
-#finally:
-#    print('closing socket')
-#    s.close()
+# Initialize the sockets
+socket1 = initSocket()
+socket2 = initSocket()
+
+
+threadWork = threading.Thread(target=monitorInterfacesStatus)
+threadWork.start()
+
+socket1Thread = threading.Thread(target=send_data, args=(socket1,1, ))
+socket2Thread = threading.Thread(target=send_data, args=(socket2,1, ))
+
+
